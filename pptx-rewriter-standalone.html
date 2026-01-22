@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPTX 表記ゆれ削除・置換</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .st-card { background: white; border-radius: 0.75rem; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .main-container { max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        .upload-zone { border: 2px dashed #d1d5db; border-radius: 1rem; transition: all 0.2s; background: #fff; }
+        .upload-zone:hover { border-color: #3b82f6; background-color: #f0f7ff; }
+        .upload-zone.dragover { border-color: #3b82f6; background-color: #f0f7ff; }
+        .mode-btn { transition: all 0.2s; border-width: 2px; }
+        .mode-btn.active { background-color: #3b82f6; color: white; border-color: #3b82f6; }
+        .security-badge { background-color: #ecfdf5; border: 1px solid #10b981; color: #065f46; }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <!-- Header & Security Notice -->
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-extrabold text-gray-900 mb-4">📄 PPTX 表記ゆれ削除・置換</h1>
+            <div class="inline-flex items-center gap-2 px-5 py-2 rounded-full security-badge text-sm font-bold mb-4">
+                <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 4.946-3.07 9.173-7.41 10.827a1.001 1.001 0 01-.76 0C5.47 16.173 2.4 11.946 2.4 7c0-.68.056-1.35.166-2.001zm8.847 3.012a1 1 0 10-1.414-1.414L8 8.172 6.707 6.879a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l3-3z" clip-rule="evenodd"></path>
+                </svg>
+                完全ローカル実行：プライバシー保護済み
+            </div>
+            <p class="text-gray-600 max-w-lg mx-auto leading-relaxed">すべての処理はブラウザ内で完結します。ファイルは外部送信されず、あなたのPC内だけで安全に処理されます。</p>
+        </header>
+
+        <section class="space-y-6">
+            <div class="st-card p-10">
+                <!-- Mode Selector -->
+                <div class="mb-8 flex flex-col gap-3">
+                    <label class="text-xs font-black text-gray-400 uppercase tracking-widest">STEP 1: アクションを選択</label>
+                    <div class="flex gap-4">
+                        <button id="mode-delete" class="mode-btn active flex-1 py-4 px-4 rounded-xl font-bold shadow-sm">削除</button>
+                        <button id="mode-replace" class="mode-btn flex-1 py-4 px-4 rounded-xl font-bold text-gray-600 border-gray-200 shadow-sm">置換</button>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="mb-8">
+                    <label class="text-xs font-black text-gray-400 uppercase tracking-widest block mb-3">STEP 2: パワーポイントをアップロード</label>
+                    <div id="drop-zone" class="upload-zone p-12 flex flex-col items-center justify-center cursor-pointer">
+                        <div class="bg-blue-50 p-5 rounded-2xl mb-4">
+                            <svg class="w-12 h-12 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                            </svg>
+                        </div>
+                        <p class="text-gray-700 font-semibold" id="file-name-display">ファイルをアップロード (.pptx)</p>
+                        <input type="file" id="file-input" class="hidden" accept=".pptx">
+                    </div>
+                </div>
+
+                <!-- Inputs Area -->
+                <div class="mb-10">
+                    <label id="input-label" class="text-xs font-black text-gray-400 uppercase tracking-widest block mb-3">STEP 3: 文言の指定</label>
+                    <div id="input-grid" class="grid grid-cols-1 gap-6 transition-all duration-300">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">検索する文言</label>
+                            <input type="text" id="target-text" placeholder="例: 引越し" class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div id="replacement-container" class="hidden">
+                            <label class="block text-sm font-bold text-gray-700 mb-2">置換後の文言</label>
+                            <input type="text" id="replacement-text" placeholder="例: 引越" class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button id="run-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-5 px-6 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3">
+                    <span id="btn-text" class="text-xl text-white">削除を実行する</span>
+                </button>
+            </div>
+
+            <!-- Results area -->
+            <div id="result-area" class="hidden space-y-4">
+                <div id="status-box" class="p-5 rounded-2xl flex items-center gap-4 bg-white border border-blue-100 text-blue-700 shadow-sm">
+                    <div id="status-icon"><div class="loading-spinner"></div></div>
+                    <span id="status-text" class="font-bold">処理中...</span>
+                </div>
+                
+                <div id="download-box" class="hidden">
+                    <div class="bg-white border-4 border-green-500 p-10 rounded-3xl text-center shadow-2xl">
+                        <h3 class="text-2xl font-black text-gray-900 mb-4">完了しました！</h3>
+                        <p id="success-msg" class="text-gray-600 mb-8 font-medium"></p>
+                        <button id="download-btn" class="bg-green-600 hover:bg-green-700 text-white px-12 py-4 rounded-2xl font-black text-lg transition-all transform hover:scale-105">
+                            修正済みファイルを保存
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Error Box -->
+                <div id="error-box" class="hidden">
+                    <div class="bg-white border-4 border-red-500 p-10 rounded-3xl text-center shadow-2xl">
+                        <h3 class="text-2xl font-black text-red-600 mb-4">エラーが発生しました</h3>
+                        <p id="error-msg" class="text-gray-600 mb-4 font-medium"></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="mt-16 text-center text-gray-400 text-xs pb-10">
+            <p>🔒 Security: No cloud, No external API, 100% Local Processing.</p>
+        </footer>
+    </div>
+
+    <script>
+        let currentMode = 'delete';
+        let processedBlob = null;
+        let originalFileName = '';
+
+        const modeReplace = document.getElementById('mode-replace');
+        const modeDelete = document.getElementById('mode-delete');
+        const replacementContainer = document.getElementById('replacement-container');
+        const inputGrid = document.getElementById('input-grid');
+        const btnText = document.getElementById('btn-text');
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const runBtn = document.getElementById('run-btn');
+        const resultArea = document.getElementById('result-area');
+        const statusBox = document.getElementById('status-box');
+        const statusText = document.getElementById('status-text');
+        const statusIcon = document.getElementById('status-icon');
+        const downloadBox = document.getElementById('download-box');
+        const downloadBtn = document.getElementById('download-btn');
+        const successMsg = document.getElementById('success-msg');
+        const errorBox = document.getElementById('error-box');
+        const errorMsg = document.getElementById('error-msg');
+
+        // Mode Switching
+        modeReplace.onclick = () => {
+            currentMode = 'replace';
+            modeReplace.classList.add('active');
+            modeDelete.classList.remove('active');
+            replacementContainer.classList.remove('hidden');
+            inputGrid.classList.remove('grid-cols-1');
+            inputGrid.classList.add('grid-cols-2');
+            btnText.innerText = "置換を実行する";
+        };
+
+        modeDelete.onclick = () => {
+            currentMode = 'delete';
+            modeDelete.classList.add('active');
+            modeReplace.classList.remove('active');
+            replacementContainer.classList.add('hidden');
+            inputGrid.classList.remove('grid-cols-2');
+            inputGrid.classList.add('grid-cols-1');
+            btnText.innerText = "削除を実行する";
+        };
+
+        // File Upload
+        dropZone.onclick = () => fileInput.click();
+        
+        fileInput.onchange = (e) => {
+            if (e.target.files.length > 0) {
+                originalFileName = e.target.files[0].name;
+                fileNameDisplay.innerText = originalFileName;
+                fileNameDisplay.classList.add('text-blue-600');
+            }
+        };
+
+        // Drag & Drop
+        dropZone.ondragover = (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        };
+        
+        dropZone.ondragleave = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+        };
+        
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                if (file.name.endsWith('.pptx')) {
+                    fileInput.files = e.dataTransfer.files;
+                    originalFileName = file.name;
+                    fileNameDisplay.innerText = originalFileName;
+                    fileNameDisplay.classList.add('text-blue-600');
+                } else {
+                    alert('.pptxファイルのみ対応しています');
+                }
+            }
+        };
+
+        // Download button
+        downloadBtn.onclick = () => {
+            if (processedBlob) {
+                const newFileName = originalFileName.replace('.pptx', '_修正済.pptx');
+                saveAs(processedBlob, newFileName);
+            }
+        };
+
+        // Process PPTX
+        async function processPptx(file, targetText, replacementText, mode) {
+            const zip = await JSZip.loadAsync(file);
+            let totalCount = 0;
+
+            // Process all XML files in the PPTX
+            const xmlFiles = Object.keys(zip.files).filter(name => 
+                name.endsWith('.xml') || name.endsWith('.rels')
+            );
+
+            for (const fileName of xmlFiles) {
+                const content = await zip.file(fileName).async('string');
+                
+                // Count and replace occurrences
+                const regex = new RegExp(escapeRegExp(targetText), 'g');
+                const matches = content.match(regex);
+                
+                if (matches) {
+                    totalCount += matches.length;
+                    const newContent = mode === 'delete' 
+                        ? content.replace(regex, '')
+                        : content.replace(regex, replacementText);
+                    zip.file(fileName, newContent);
+                }
+            }
+
+            const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+            return { blob, count: totalCount };
+        }
+
+        // Escape special characters for regex
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // Run button click handler
+        runBtn.onclick = async () => {
+            const target = document.getElementById('target-text').value;
+            const replacement = document.getElementById('replacement-text').value;
+
+            if (!target) {
+                return alert("検索する文言を入力してください");
+            }
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                return alert("PPTXファイルをアップロードしてください");
+            }
+
+            // Reset state
+            runBtn.disabled = true;
+            runBtn.classList.add('opacity-50');
+            resultArea.classList.remove('hidden');
+            downloadBox.classList.add('hidden');
+            errorBox.classList.add('hidden');
+            statusBox.className = "p-5 rounded-2xl flex items-center gap-4 bg-white border border-blue-100 text-blue-700 shadow-sm";
+            statusIcon.innerHTML = '<div class="loading-spinner"></div>';
+            statusText.innerText = "ファイルを処理中...";
+
+            try {
+                const file = fileInput.files[0];
+                const result = await processPptx(file, target, replacement, currentMode);
+                
+                processedBlob = result.blob;
+
+                // Success
+                statusBox.className = "p-5 rounded-2xl flex items-center gap-4 bg-green-50 text-green-700 border border-green-200";
+                statusText.innerText = "成功：全スライドの処理が完了しました";
+                statusIcon.innerHTML = '✅';
+
+                const actionText = currentMode === 'replace' ? '置換' : '削除';
+                successMsg.innerText = `${result.count}箇所の "${target}" を${actionText}しました。`;
+                downloadBox.classList.remove('hidden');
+
+            } catch (error) {
+                statusBox.className = "p-5 rounded-2xl flex items-center gap-4 bg-red-50 text-red-700 border border-red-200";
+                statusText.innerText = "エラーが発生しました";
+                statusIcon.innerHTML = '❌';
+                errorMsg.innerText = error.message;
+                errorBox.classList.remove('hidden');
+            } finally {
+                runBtn.disabled = false;
+                runBtn.classList.remove('opacity-50');
+            }
+        };
+    </script>
+</body>
+</html>
