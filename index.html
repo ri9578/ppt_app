@@ -27,6 +27,8 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .word-row { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -71,17 +73,29 @@
 
                 <!-- Inputs Area -->
                 <div class="mb-10">
-                    <label id="input-label" class="text-xs font-black text-gray-400 uppercase tracking-widest block mb-3">STEP 3: 文言の指定</label>
-                    <div id="input-grid" class="grid grid-cols-1 gap-6 transition-all duration-300">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">検索する文言</label>
-                            <input type="text" id="target-text" placeholder="例: 引越し" class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
-                        </div>
-                        <div id="replacement-container" class="hidden">
-                            <label class="block text-sm font-bold text-gray-700 mb-2">置換後の文言</label>
-                            <input type="text" id="replacement-text" placeholder="例: 引越" class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                    <label class="text-xs font-black text-gray-400 uppercase tracking-widest block mb-3">STEP 3: 文言の指定</label>
+                    
+                    <!-- Word rows container -->
+                    <div id="word-rows-container" class="space-y-3">
+                        <!-- 最初の行 -->
+                        <div class="word-row flex gap-3 items-center" data-row-id="1">
+                            <div class="flex-1">
+                                <input type="text" class="target-text w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="検索する文言（例: 引越し）">
+                            </div>
+                            <div class="flex-1 replacement-field hidden">
+                                <input type="text" class="replacement-text w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="置換後（例: 引越）">
+                            </div>
+                            <button class="remove-row-btn hidden w-12 h-12 bg-red-100 hover:bg-red-200 text-red-600 rounded-xl font-bold text-xl transition-all flex items-center justify-center">
+                                −
+                            </button>
                         </div>
                     </div>
+
+                    <!-- Add button -->
+                    <button id="add-row-btn" class="mt-4 w-full py-3 border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-xl font-bold transition-all flex items-center justify-center gap-2">
+                        <span class="text-2xl">+</span>
+                        <span>文言を追加</span>
+                    </button>
                 </div>
 
                 <!-- Action Button -->
@@ -100,7 +114,7 @@
                 <div id="download-box" class="hidden">
                     <div class="bg-white border-4 border-green-500 p-10 rounded-3xl text-center shadow-2xl">
                         <h3 class="text-2xl font-black text-gray-900 mb-4">完了しました！</h3>
-                        <p id="success-msg" class="text-gray-600 mb-8 font-medium"></p>
+                        <div id="success-msg" class="text-gray-600 mb-8 font-medium"></div>
                         <button id="download-btn" class="bg-green-600 hover:bg-green-700 text-white px-12 py-4 rounded-2xl font-black text-lg transition-all transform hover:scale-105">
                             修正済みファイルを保存
                         </button>
@@ -126,11 +140,10 @@
         let currentMode = 'delete';
         let processedBlob = null;
         let originalFileName = '';
+        let rowIdCounter = 1;
 
         const modeReplace = document.getElementById('mode-replace');
         const modeDelete = document.getElementById('mode-delete');
-        const replacementContainer = document.getElementById('replacement-container');
-        const inputGrid = document.getElementById('input-grid');
         const btnText = document.getElementById('btn-text');
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
@@ -145,15 +158,72 @@
         const successMsg = document.getElementById('success-msg');
         const errorBox = document.getElementById('error-box');
         const errorMsg = document.getElementById('error-msg');
+        const wordRowsContainer = document.getElementById('word-rows-container');
+        const addRowBtn = document.getElementById('add-row-btn');
+
+        // Update remove buttons visibility
+        function updateRemoveButtons() {
+            const rows = wordRowsContainer.querySelectorAll('.word-row');
+            rows.forEach(row => {
+                const removeBtn = row.querySelector('.remove-row-btn');
+                if (rows.length > 1) {
+                    removeBtn.classList.remove('hidden');
+                } else {
+                    removeBtn.classList.add('hidden');
+                }
+            });
+        }
+
+        // Add new row
+        function addRow() {
+            rowIdCounter++;
+            const newRow = document.createElement('div');
+            newRow.className = 'word-row flex gap-3 items-center';
+            newRow.dataset.rowId = rowIdCounter;
+            
+            const replacementHiddenClass = currentMode === 'delete' ? 'hidden' : '';
+            
+            newRow.innerHTML = `
+                <div class="flex-1">
+                    <input type="text" class="target-text w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="検索する文言（例: 引越し）">
+                </div>
+                <div class="flex-1 replacement-field ${replacementHiddenClass}">
+                    <input type="text" class="replacement-text w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="置換後（例: 引越）">
+                </div>
+                <button class="remove-row-btn w-12 h-12 bg-red-100 hover:bg-red-200 text-red-600 rounded-xl font-bold text-xl transition-all flex items-center justify-center">
+                    −
+                </button>
+            `;
+            
+            wordRowsContainer.appendChild(newRow);
+            
+            // Add remove event
+            newRow.querySelector('.remove-row-btn').addEventListener('click', () => {
+                newRow.remove();
+                updateRemoveButtons();
+            });
+            
+            updateRemoveButtons();
+        }
+
+        // Add row button click
+        addRowBtn.addEventListener('click', addRow);
+
+        // Initial remove button event
+        document.querySelector('.remove-row-btn').addEventListener('click', function() {
+            if (wordRowsContainer.querySelectorAll('.word-row').length > 1) {
+                this.closest('.word-row').remove();
+                updateRemoveButtons();
+            }
+        });
 
         // Mode Switching
         modeReplace.onclick = () => {
             currentMode = 'replace';
             modeReplace.classList.add('active');
             modeDelete.classList.remove('active');
-            replacementContainer.classList.remove('hidden');
-            inputGrid.classList.remove('grid-cols-1');
-            inputGrid.classList.add('grid-cols-2');
+            // Show all replacement fields
+            document.querySelectorAll('.replacement-field').forEach(el => el.classList.remove('hidden'));
             btnText.innerText = "置換を実行する";
         };
 
@@ -161,9 +231,8 @@
             currentMode = 'delete';
             modeDelete.classList.add('active');
             modeReplace.classList.remove('active');
-            replacementContainer.classList.add('hidden');
-            inputGrid.classList.remove('grid-cols-2');
-            inputGrid.classList.add('grid-cols-1');
+            // Hide all replacement fields
+            document.querySelectorAll('.replacement-field').forEach(el => el.classList.add('hidden'));
             btnText.innerText = "削除を実行する";
         };
 
@@ -213,10 +282,30 @@
             }
         };
 
+        // Get all word pairs
+        function getWordPairs() {
+            const pairs = [];
+            const rows = wordRowsContainer.querySelectorAll('.word-row');
+            rows.forEach(row => {
+                const target = row.querySelector('.target-text').value.trim();
+                const replacement = row.querySelector('.replacement-text').value.trim();
+                if (target) {
+                    pairs.push({ target, replacement });
+                }
+            });
+            return pairs;
+        }
+
         // Process PPTX
-        async function processPptx(file, targetText, replacementText, mode) {
+        async function processPptx(file, wordPairs, mode) {
             const zip = await JSZip.loadAsync(file);
+            const results = {};
             let totalCount = 0;
+
+            // Initialize results
+            wordPairs.forEach(pair => {
+                results[pair.target] = 0;
+            });
 
             // Process all XML files in the PPTX
             const xmlFiles = Object.keys(zip.files).filter(name => 
@@ -224,23 +313,27 @@
             );
 
             for (const fileName of xmlFiles) {
-                const content = await zip.file(fileName).async('string');
+                let content = await zip.file(fileName).async('string');
                 
-                // Count and replace occurrences
-                const regex = new RegExp(escapeRegExp(targetText), 'g');
-                const matches = content.match(regex);
-                
-                if (matches) {
-                    totalCount += matches.length;
-                    const newContent = mode === 'delete' 
-                        ? content.replace(regex, '')
-                        : content.replace(regex, replacementText);
-                    zip.file(fileName, newContent);
+                // Process each word pair
+                for (const pair of wordPairs) {
+                    const regex = new RegExp(escapeRegExp(pair.target), 'g');
+                    const matches = content.match(regex);
+                    
+                    if (matches) {
+                        results[pair.target] += matches.length;
+                        totalCount += matches.length;
+                        content = mode === 'delete' 
+                            ? content.replace(regex, '')
+                            : content.replace(regex, pair.replacement);
+                    }
                 }
+                
+                zip.file(fileName, content);
             }
 
             const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
-            return { blob, count: totalCount };
+            return { blob, results, totalCount };
         }
 
         // Escape special characters for regex
@@ -250,11 +343,10 @@
 
         // Run button click handler
         runBtn.onclick = async () => {
-            const target = document.getElementById('target-text').value;
-            const replacement = document.getElementById('replacement-text').value;
+            const wordPairs = getWordPairs();
 
-            if (!target) {
-                return alert("検索する文言を入力してください");
+            if (wordPairs.length === 0) {
+                return alert("検索する文言を1つ以上入力してください");
             }
 
             if (!fileInput.files || fileInput.files.length === 0) {
@@ -273,7 +365,7 @@
 
             try {
                 const file = fileInput.files[0];
-                const result = await processPptx(file, target, replacement, currentMode);
+                const result = await processPptx(file, wordPairs, currentMode);
                 
                 processedBlob = result.blob;
 
@@ -282,8 +374,20 @@
                 statusText.innerText = "成功：全スライドの処理が完了しました";
                 statusIcon.innerHTML = '✅';
 
+                // Build result message
                 const actionText = currentMode === 'replace' ? '置換' : '削除';
-                successMsg.innerText = `${result.count}箇所の "${target}" を${actionText}しました。`;
+                let resultHtml = `<p class="mb-2">合計 <strong>${result.totalCount}箇所</strong> を${actionText}しました。</p>`;
+                resultHtml += '<ul class="text-left inline-block">';
+                for (const pair of wordPairs) {
+                    const count = result.results[pair.target];
+                    if (currentMode === 'replace') {
+                        resultHtml += `<li>「${pair.target}」→「${pair.replacement}」: ${count}箇所</li>`;
+                    } else {
+                        resultHtml += `<li>「${pair.target}」: ${count}箇所</li>`;
+                    }
+                }
+                resultHtml += '</ul>';
+                successMsg.innerHTML = resultHtml;
                 downloadBox.classList.remove('hidden');
 
             } catch (error) {
